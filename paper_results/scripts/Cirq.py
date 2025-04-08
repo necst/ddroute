@@ -1,0 +1,66 @@
+import time
+import sys
+import os
+import cirq
+import networkx as nx
+from qiskit import QuantumCircuit, transpile, qasm2
+from qiskit.transpiler import CouplingMap
+from qiskit.compiler import transpile
+from cirq.contrib.qasm_import import circuit_from_qasm
+
+def parse_topology_graph(filename):
+    c_map = []
+    with open(filename, "r") as t_file:
+        next(t_file)
+        for line in t_file:
+            c_map += [[int(line.split()[0]),int(line.split()[1])]]
+    res = CouplingMap(c_map)
+    res.make_symmetric()
+
+    qids = []
+    for _ in range(res.size()):
+        qids += [cirq.NamedQubit(str(_)).with_dimension(2)]
+
+    graph = nx.Graph()
+    for edge in c_map:
+        graph.add_edge(qids[edge[0]],qids[edge[1]])
+    return graph
+
+#Standard gate set
+gate_set = ['cx','rz','sx','x']
+
+#Read circuit from QASM file
+circ = QuantumCircuit.from_qasm_file(sys.argv[1])
+transpiled_qc = circ
+cirq_qc = circuit_from_qasm(qasm2.dumps(transpiled_qc))
+
+#Read topology from txt
+graph = parse_topology_graph(sys.argv[2])
+
+#Route the circuit
+router = cirq.RouteCQC(graph)
+ts = time.time()
+cirq_routed_qc = router.route_circuit(cirq_qc)[0]
+te = time.time()
+routed_qc = QuantumCircuit.from_qasm_str(cirq.qasm(cirq_routed_qc))
+routed_qc = transpile(routed_qc, basis_gates=gate_set, optimization_level = 0)
+
+#Collect metrics
+route_time = te-ts
+init_depth = transpiled_qc.depth()
+final_depth = routed_qc.depth()
+num_qubits = transpiled_qc.num_qubits
+
+initial_cx = transpiled_qc.count_ops()['cx']
+final_cx = routed_qc.count_ops()['cx']
+swap_count = (final_cx-initial_cx)//3
+
+initial_operations = 0
+final_operations = 0
+for g in gate_set:
+    if g in transpiled_qc.count_ops().keys():
+        initial_operations = initial_operations + transpiled_qc.count_ops()[g]
+    if g in routed_qc.count_ops().keys():
+        final_operations = final_operations + routed_qc.count_ops()[g]
+
+print(f'CIRQ,{os.path.basename(sys.argv[1])},{os.path.basename(sys.argv[2])},{num_qubits},{init_depth},{initial_operations},{initial_cx},{final_depth},{final_operations},{final_cx},{swap_count},{sys.argv[3]},{route_time}',end="")
