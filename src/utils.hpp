@@ -21,20 +21,7 @@
 #define SCORE_LA(sd) (2.25*(sd/3.0))
 #define SCORE_SWAP(sd) (1.5*(sd/3.0))
 
-inline bool IS_BETTER(int a, int b, bool tie_break, int &same_score){
-    if(a<0) return 0;
-    if(b<0 || a<b){
-        if(tie_break) same_score = 1;
-        return 1;
-    }
-    if(fabs(a-b)==0 && tie_break){
-        same_score++;
-        return TIE_BREAK(same_score);
-    }
-    return 0;
-}
-
-inline bool IS_BETTER_D(double a, double b, bool tie_break, int &same_score){
+inline bool IS_BETTER(double a, double b, bool tie_break, int &same_score){
     if(a<0) return 0;
     if(b<0 || a<b){
         if(tie_break) same_score = 1;
@@ -135,7 +122,7 @@ struct MyTripleHeap{
 
     std::vector<double> scores;
 
-    std::vector<int> depth;
+    std::vector<double> depth;
     std::vector<int> swap;
     std::vector<double> la_score;
 

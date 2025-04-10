@@ -12,6 +12,10 @@
 #include <algorithm>
 #include <unordered_map>
 
+#include <pybind11/pybind11.h>
+
+namespace py = pybind11;
+
 /**
  * Internal representation of quantum operations
  */
@@ -24,13 +28,13 @@ struct DDROperation{
     bool is2g;
     int oth;
     int oth_idx;
-    int depth;
-    int depth_2g;
+    double depth;
+    double depth_2g;
     int first_operand;
-    int gate_depth;
+    double gate_depth;
     int gate_id;
 
-    DDROperation(std::string &name,int qubit,std::vector<double> &gargs,bool is2g, int gate_depth, int gate_id, std::vector<int>& cargs)
+    DDROperation(std::string &name,int qubit,std::vector<double> &gargs,bool is2g, double gate_depth, int gate_id, std::vector<int>& cargs)
         :name(name),qubit(qubit),gargs(gargs),cargs(cargs),is2g(is2g),gate_depth(gate_depth),gate_id(gate_id){}
 };
 
@@ -40,8 +44,8 @@ struct DDROperation{
 struct DDRSchedule{
     int num_qubit;
     std::vector<std::vector<DDROperation>> schedule;
-    std::vector<int> qubit_depth;
-    std::vector<int> qubit_depth_2g;
+    std::vector<double> qubit_depth;
+    std::vector<double> qubit_depth_2g;
     std::unordered_map<std::string,int> op_count;
 
     /**
@@ -49,6 +53,11 @@ struct DDRSchedule{
      * @param num_qubit: number of logical qubits
      */
     DDRSchedule(int num_qubit):num_qubit(num_qubit){
+
+        if(num_qubit <= 0){
+            throw py::value_error("Invalid qubit number: " + std::to_string(num_qubit));
+        }
+
         schedule.insert(schedule.begin(),num_qubit,std::vector<DDROperation>());
         qubit_depth.insert(qubit_depth.begin(),num_qubit,0);
         qubit_depth_2g.insert(qubit_depth_2g.begin(),num_qubit,0);
@@ -63,8 +72,15 @@ struct DDRSchedule{
      * @param gate_depth: gate duration (default: 1)
      * @param gate_id: gate numerical id (optional)
      */
-    void add_operation_1(std::string &name, int qubit, std::vector<double> &gargs, std::vector<int> &cargs, int gate_depth = 1, int gate_id = -1){
-        if(qubit<0 || qubit>=num_qubit) return;
+    void add_operation_1(std::string &name, int qubit, std::vector<double> &gargs, std::vector<int> &cargs, double gate_depth = 1.0, int gate_id = -1){
+
+        if(gate_depth < 0){
+            throw py::value_error("Invalid gate duration: " + std::to_string(gate_depth) + ", required duration >= 0");
+        }
+        if(qubit < 0 || qubit>=num_qubit){
+            throw py::value_error("Invalid qubit id: " + std::to_string(qubit) + ", required 0 <= id < " + std::to_string(num_qubit));
+        }
+
         DDROperation op = DDROperation(name,qubit,gargs,false,gate_depth,gate_id,cargs);
         op.depth = qubit_depth[qubit];
         op.depth_2g = qubit_depth_2g[qubit];
@@ -88,21 +104,30 @@ struct DDRSchedule{
      * @param gate_depth: gate duration (default: 1)
      * @param gate_id: gate numerical id (optional)
      */
-    void add_operation_2(std::string &name, int qubit1, int qubit2, std::vector<double> &gargs, std::vector<int> &cargs,  int gate_depth = 1, int gate_id = -1){
-        if(qubit1<0 || qubit1>=num_qubit) return;
-        if(qubit2<0 || qubit2>=num_qubit) return;
+    void add_operation_2(std::string &name, int qubit1, int qubit2, std::vector<double> &gargs, std::vector<int> &cargs,  double gate_depth = 1.0, int gate_id = -1){
+        
+        if(gate_depth < 0){
+            throw py::value_error("Invalid gate duration: " + std::to_string(gate_depth) + ", required duration >= 0");
+        }
+        if(qubit1 < 0 || qubit1>=num_qubit){
+            throw py::value_error("Invalid qubit id: " + std::to_string(qubit1)+ ", required 0 <= id < " + std::to_string(num_qubit));
+        }
+        if(qubit2 < 0 || qubit2>=num_qubit){
+            throw py::value_error("Invalid qubit id: " + std::to_string(qubit2)+ ", required 0 <= id < " + std::to_string(num_qubit));
+        }
+        
         DDROperation op1 = DDROperation(name,qubit1,gargs,true,gate_depth,gate_id,cargs);
         DDROperation op2 = DDROperation(name,qubit2,gargs,true,gate_depth,gate_id,cargs);
 
         op1.depth = MAX(qubit_depth[qubit1],qubit_depth[qubit2]);
         op1.depth_2g = MAX(qubit_depth_2g[qubit1],qubit_depth_2g[qubit2]);
         op1.oth = qubit2;
-        op1.oth_idx = schedule[qubit2].size();
+        op1.oth_idx = (int) schedule[qubit2].size();
 
         op2.depth = MAX(qubit_depth[qubit1],qubit_depth[qubit2]);
         op2.depth_2g = MAX(qubit_depth_2g[qubit1],qubit_depth_2g[qubit2]);
         op2.oth = qubit1;
-        op2.oth_idx = schedule[qubit1].size();
+        op2.oth_idx = (int) schedule[qubit1].size();
 
         op1.first_operand = qubit1;
         op2.first_operand = qubit1;
@@ -122,38 +147,17 @@ struct DDRSchedule{
         }
     }
 
-    void pop_operation(int line){
-
-        if(schedule[line].size()==0) return;
-
-        if(op_count.find(schedule[line][schedule[line].size()-1].name)!=op_count.end()){
-            op_count[schedule[line][schedule[line].size()-1].name] = op_count[schedule[line][schedule[line].size()-1].name] - 1;
-        }
-
-        qubit_depth[line] -= schedule[line][schedule[line].size()-1].gate_depth;
-
-        if(schedule[line][schedule[line].size()-1].is2g){
-            int oth = schedule[line][schedule[line].size()-1].oth;
-            qubit_depth[oth] -= schedule[line][schedule[line].size()-1].gate_depth;
-            qubit_depth_2g[oth] -= schedule[line][schedule[line].size()-1].gate_depth;
-            qubit_depth_2g[line] -= schedule[line][schedule[line].size()-1].gate_depth;
-            schedule[oth].pop_back();
-        }
-
-        schedule[line].pop_back();
-    }
-
     /**
      * Quantum circuit depth
      */
-    int depth(){
+    double depth(){
         return *std::max_element(qubit_depth.begin(),qubit_depth.end());
     }
 
     /**
      * Quantum circuit two-qubit-gates depth
      */
-    int depth_2g(){
+    double depth_2g(){
         return *std::max_element(qubit_depth_2g.begin(),qubit_depth_2g.end());
     }
     
@@ -280,7 +284,7 @@ struct DDRScheduleReader{
     /**
      * Quantum circuit depth
      */
-    int depth(){
+    double depth(){
         return s.depth();
     }
 
@@ -288,7 +292,12 @@ struct DDRScheduleReader{
      * Qubit depth
      * @param q: qubit
      */
-    int qubit_depth(int q){
+    double qubit_depth(int q){
+
+        if(q < 0 || q>=s.num_qubit){
+            throw py::value_error("Invalid qubit id: " + std::to_string(q)+ ", required 0 <= id < " + std::to_string(s.num_qubit));
+        }
+        
         return s.qubit_depth[q];
     }
 

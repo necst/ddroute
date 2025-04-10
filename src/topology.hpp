@@ -12,13 +12,17 @@
 
 #include "utils.hpp"
 
+#include <pybind11/pybind11.h>
+
+namespace py = pybind11;
+
 /**
  * Topology representation used in DDRoute
  */
 struct DDRTopology{
     int num_nodes;
     std::vector<std::vector<int>> adjacent;
-    std::vector<std::vector<int>> distance;
+    std::vector<std::vector<double>> distance;
     std::vector<std::vector<int>> predecessor;
     bool distances_updated;
     
@@ -27,8 +31,12 @@ struct DDRTopology{
      * @param num_nodes: number of physical qubits
      */
     DDRTopology(int num_nodes) : num_nodes(num_nodes){
+        if(num_nodes <= 0){
+            throw py::value_error("Invalid qubit number: " + std::to_string(num_nodes));
+        }
+
         adjacent.insert(adjacent.begin(),num_nodes,std::vector<int>());
-        distance.insert(distance.begin(),num_nodes,std::vector<int>());
+        distance.insert(distance.begin(),num_nodes,std::vector<double>());
         predecessor.insert(predecessor.begin(),num_nodes,std::vector<int>());
         for(int i=0; i<num_nodes; i++){
             distance[i].insert(distance[i].begin(),num_nodes,-1);
@@ -44,6 +52,13 @@ struct DDRTopology{
      * @param symmetric: insert also link from b to a
      */
     void add_edge(int a, int b, bool symmetric){
+        if(a < 0 || a >= num_nodes){
+            throw py::value_error("Invalid qubit id: " + std::to_string(a) + ", required 0 <= id < " + std::to_string(num_nodes));
+        }
+        if(b < 0 || b >= num_nodes){
+            throw py::value_error("Invalid qubit id: " + std::to_string(b) + ", required 0 <= id < " + std::to_string(num_nodes));
+        }
+
         bool found=false;
 
         if(a==b) return;
@@ -98,7 +113,7 @@ struct DDRTopology{
         while(done_count < num_nodes - 1){
             int min_n = heap.vals[0];
             visited[min_n] = true;
-            int min_d = heap.scores[min_n];
+            double min_d = (int) heap.scores[min_n];
 
             heap.heap_pop_min(false,same_score);
 
@@ -108,7 +123,7 @@ struct DDRTopology{
 
                 if(visited[adj]) continue;
 
-                int curr_score = min_d + 1;
+                double curr_score = min_d + 1;
 
                 if(IS_BETTER(curr_score,heap.scores[adj],false,same_score)){
                     heap.scores[adj] = curr_score;
@@ -134,6 +149,13 @@ struct DDRTopology{
      * @return SWAP (i.e. non weighted) distance between a and b
      */
     int get_distance(int a, int b){
+        if(a < 0 || a >= num_nodes){
+            throw py::value_error("Invalid qubit id: " + std::to_string(a) + ", required 0 <= id < " + std::to_string(num_nodes));
+        }
+        if(b < 0 || b >= num_nodes){
+            throw py::value_error("Invalid qubit id: " + std::to_string(b) + ", required 0 <= id < " + std::to_string(num_nodes));
+        }
+        
         if(!distances_updated){
 
             for(int i=0; i<num_nodes; i++)
@@ -152,6 +174,13 @@ struct DDRTopology{
      * @return The predecessor of 'b' along the optimal path from 'a' to 'b'
      */
     int get_predecessor(int a, int b){
+        if(a < 0 || a >= num_nodes){
+            throw py::value_error("Invalid qubit id: " + std::to_string(a) + ", required 0 <= id < " + std::to_string(num_nodes));
+        }
+        if(b < 0 || b >= num_nodes){
+            throw py::value_error("Invalid qubit id: " + std::to_string(b) + ", required 0 <= id < " + std::to_string(num_nodes));
+        }
+
         if(!distances_updated){
 
             for(int i=0; i<num_nodes; i++)
@@ -170,6 +199,13 @@ struct DDRTopology{
      * @return True if a and b are connected, False otherwise
      */
     inline bool is_connected(int a, int b){
+        if(a < 0 || a >= num_nodes){
+            throw py::value_error("Invalid qubit id: " + std::to_string(a) + ", required 0 <= id < " + std::to_string(num_nodes));
+        }
+        if(b < 0 || b >= num_nodes){
+            throw py::value_error("Invalid qubit id: " + std::to_string(b) + ", required 0 <= id < " + std::to_string(num_nodes));
+        }
+
         for(unsigned int i=0; i<adjacent[a].size(); i++){
             if(adjacent[a][i] == b) return true;
         }

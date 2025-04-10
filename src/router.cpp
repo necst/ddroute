@@ -14,6 +14,10 @@
 #include "schedule.hpp"
 #include "topology.hpp"
 
+#include <pybind11/pybind11.h>
+
+namespace py = pybind11;
+
 /**
  * DDRouter instance
  */
@@ -30,8 +34,7 @@ struct DDRouter{
     std::vector<int> ltp_map;
     std::vector<int> ptl_map;
 
-    int two_qubit_gate_depth;
-    int swap_depth;
+    double swap_depth;
 
     /**
      * DDRouter constructor
@@ -41,6 +44,11 @@ struct DDRouter{
     DDRouter(DDRSchedule& c, DDRTopology& t):c(c),t(t),pc(t.num_nodes){
         num_lq = c.num_qubit;
         num_pq = t.num_nodes;
+
+        if(num_lq > num_pq){
+            throw py::value_error("Cannot map " + std::to_string(num_lq) + " logical qubits onto " + std::to_string(num_pq) + " physical qubits");
+        }
+
         ltp_map.insert(ltp_map.begin(),num_lq,-1);
         ptl_map.insert(ptl_map.begin(),num_pq,-1);
         swap_depth = 3;
@@ -50,7 +58,11 @@ struct DDRouter{
      * Set SWAP gate duration
      * @param value: SWAP duration
      */
-    void set_swap_depth(int value){
+    void set_swap_depth(double value){
+        if(value < 0){
+            throw py::value_error("Invalid SWAP duration: " + std::to_string(value) + ", required duration >= 0 ");
+        }
+
         swap_depth = value;
     }
 
@@ -60,6 +72,9 @@ struct DDRouter{
      */
     void set_initial_mapping(std::vector<int> &ltp){
         for(int i=0; i<num_lq; i++){
+            if(ltp[i] < 0 || ltp[i] >= t.num_nodes){
+                throw py::value_error("Invalid logical-to-physical mapping: found value " + std::to_string(ltp[i]) + ", required 0 <= pi(q) < " + std::to_string(t.num_nodes));
+            }
             ltp_map[i] = ltp[i];
         }
         for(int i=0; i<num_pq; i++){
@@ -116,7 +131,7 @@ struct DDRouter{
 
         while(mapped_qubits < num_lq){
             compute_front_layer_2g(pcs,fl_pcs,front_layer);
-            int min_depth = -1;
+            double min_depth = -1;
             int min_op = -1;
             int min_nt = -1;
             int same_score = 1;
@@ -176,7 +191,7 @@ struct DDRouter{
     /**
      * Heuristic for selecting gates to compute the lookahead score
      */
-    int gate_scheduling_score(int q, int pc){
+    double gate_scheduling_score(int q, int pc){
         return c.schedule[q][pc].depth_2g;
     }
 
@@ -189,8 +204,8 @@ struct DDRouter{
         int gates_done = 0;
 
         int op_best = 0;
-        int curr_score = -1;
-        int op_best_score = -1;
+        double curr_score = -1;
+        double op_best_score = -1;
         int same_score = 1;
         double coeff = 1.0;
 
@@ -233,7 +248,7 @@ struct DDRouter{
     /**
      * Generalized distance function
      */
-    inline double path_score(int depth, int nswap, double la_score){
+    inline double path_score(double depth, int nswap, double la_score){
         return depth + nswap*(SCORE_SWAP(swap_depth)) + la_score*(SCORE_LA(swap_depth));
     }
 
@@ -268,7 +283,8 @@ struct DDRouter{
 
         int done_count = 0;
         int min_q;
-        int min_d, min_dist;
+        double min_d;
+        int min_dist;
         double min_la;
         int adj, same_score = 1;
 
@@ -292,7 +308,7 @@ struct DDRouter{
                 if(visited[adj]) continue;
 
                 same_score = 1;
-                int curr_depth = MAX(min_d,pc.qubit_depth[adj]) + swap_depth;
+                double curr_depth = MAX(min_d,pc.qubit_depth[adj]) + swap_depth;
                 int curr_std_dist = min_dist + 1;
                 double curr_la = min_la;
 
@@ -342,7 +358,7 @@ struct DDRouter{
     void perform_SWAP(int q1, int q2, std::vector<int> &pcs){
 
         std::string newname = std::string("swap");
-        int depth_to_insert = swap_depth;
+        double depth_to_insert = swap_depth;
 
         if(
             pc.schedule[q1].size()>0 &&
@@ -516,13 +532,13 @@ struct DDRouter{
 
                 while(!swap_found){
                     int min_depth_qubit = -1;
-                    int min_depth = -1;
+                    double min_depth = -1;
                     int same_score = 1;
 
                     // Operand selection
                     for(int i=0; i<num_lq; i++){
                         if(front_layer[i] && !excluded[ltp_map[i]]){
-                            int qscore = pc.qubit_depth[t.adjacent[ltp_map[i]][0]];
+                            double qscore = pc.qubit_depth[t.adjacent[ltp_map[i]][0]];
                             for(unsigned int j=1; j<t.adjacent[ltp_map[i]].size(); j++){
                                 qscore = MIN(qscore,pc.qubit_depth[t.adjacent[ltp_map[i]][j]]);
                             }
