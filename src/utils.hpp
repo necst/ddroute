@@ -47,6 +47,9 @@ inline bool IS_BETTER_D(double a, double b, bool tie_break, int &same_score){
     return 0;
 }
 
+/**
+ * Structure used for computing the lookahead ('next') component of the generalized distance function
+ */
 typedef struct front_layer_prefs_t{
     int size;
     int op_1[2*OPERANDS_LOOKAHEAD];
@@ -54,6 +57,9 @@ typedef struct front_layer_prefs_t{
     double coeff[2*OPERANDS_LOOKAHEAD];
 }front_layer_prefs;
 
+/**
+ * Array-based heap with additional indexing
+ */
 struct MyHeap{
 
     std::vector<double> scores;
@@ -122,6 +128,9 @@ struct MyHeap{
 
 };
 
+/**
+ * Array-based heap with additional data and indexing
+ */
 struct MyTripleHeap{
 
     std::vector<double> scores;
@@ -189,7 +198,6 @@ struct MyTripleHeap{
         }
     }
 
-    //Before decreasing size
     void heap_pop_min(bool tie_break, int &same_score){
         vals[0] = vals[size-1];
         idxs[vals[0]] = 0;
@@ -199,6 +207,9 @@ struct MyTripleHeap{
 
 };
 
+/**
+ * Allocate matrix
+ */
 int **new_matrix(int rows, int cols){
     int **res;
 
@@ -210,7 +221,9 @@ int **new_matrix(int rows, int cols){
     return res;
 }
 
-
+/**
+ * Deallocate matrix
+ */
 void free_matrix(int **mat, int rows){
     for(int i=0; i<rows; i++){
         free(mat[i]);
@@ -218,6 +231,9 @@ void free_matrix(int **mat, int rows){
     free(mat);
 }
 
+/**
+ * Check if front layer is empty
+ */
 int is_empty_fl(std::vector<bool> &fl){
     for(unsigned int i=0; i<fl.size(); i++){
         if(fl[i]) return false;

@@ -12,6 +12,9 @@
 
 #include "utils.hpp"
 
+/**
+ * Topology representation used in DDRoute
+ */
 struct DDRTopology{
     int num_nodes;
     std::vector<std::vector<int>> adjacent;
@@ -19,6 +22,10 @@ struct DDRTopology{
     std::vector<std::vector<int>> predecessor;
     bool distances_updated;
     
+    /**
+     * DDRTopology constructor
+     * @param num_nodes: number of physical qubits
+     */
     DDRTopology(int num_nodes) : num_nodes(num_nodes){
         adjacent.insert(adjacent.begin(),num_nodes,std::vector<int>());
         distance.insert(distance.begin(),num_nodes,std::vector<int>());
@@ -30,6 +37,12 @@ struct DDRTopology{
         distances_updated = false;
     }
 
+    /**
+     * Insert an edge in the coupling map
+     * @param a: first physical qubit
+     * @param b: second physical qubit
+     * @param symmetric: insert also link from b to a
+     */
     void add_edge(int a, int b, bool symmetric){
         bool found=false;
 
@@ -56,6 +69,9 @@ struct DDRTopology{
         }
     }
 
+    /**
+     * Update SWAP distance between physical qubits
+     */
     void compute_distances(int source){
 
         MyHeap heap = MyHeap(num_nodes);
@@ -111,6 +127,12 @@ struct DDRTopology{
 
     }
 
+    /**
+     * Compute the SWAP distance between two physical qubits in the coupling map
+     * @param a: first physical qubit
+     * @param b: second physical qubit
+     * @return SWAP (i.e. non weighted) distance between a and b
+     */
     int get_distance(int a, int b){
         if(!distances_updated){
 
@@ -123,6 +145,12 @@ struct DDRTopology{
         return distance[a][b];
     }
 
+    /**
+     * Compute the predecessor of 'b' along the optimal path from 'a' to 'b' in the coupling map
+     * @param a: first physical qubit
+     * @param b: second physical qubit
+     * @return The predecessor of 'b' along the optimal path from 'a' to 'b'
+     */
     int get_predecessor(int a, int b){
         if(!distances_updated){
 
@@ -135,6 +163,12 @@ struct DDRTopology{
         return predecessor[a][b];
     }
 
+    /**
+     * Check if two qubits are connected in the coupling map
+     * @param a: first physical qubit
+     * @param b: second physical qubit
+     * @return True if a and b are connected, False otherwise
+     */
     inline bool is_connected(int a, int b){
         for(unsigned int i=0; i<adjacent[a].size(); i++){
             if(adjacent[a][i] == b) return true;
@@ -142,6 +176,10 @@ struct DDRTopology{
         return false;
     }
 
+    /**
+     * Return the non-allocated physical qubit nearest to 'source'
+     * Returns -1 if all physical qubits have been assigned to logical qubits
+     */
     int get_nearest_free(int source, std::vector<int> &ptl){
         int min_dist = -1;
         int min_node = -1;

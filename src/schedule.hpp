@@ -12,6 +12,9 @@
 #include <algorithm>
 #include <unordered_map>
 
+/**
+ * Internal representation of quantum operations
+ */
 struct DDROperation{
 
     std::string name;
@@ -31,6 +34,9 @@ struct DDROperation{
         :name(name),qubit(qubit),gargs(gargs),cargs(cargs),is2g(is2g),gate_depth(gate_depth),gate_id(gate_id){}
 };
 
+/**
+ * Quantum circuit representation used in DDRoute
+ */
 struct DDRSchedule{
     int num_qubit;
     std::vector<std::vector<DDROperation>> schedule;
@@ -38,12 +44,25 @@ struct DDRSchedule{
     std::vector<int> qubit_depth_2g;
     std::unordered_map<std::string,int> op_count;
 
+    /**
+     * DDRSchedule constructor
+     * @param num_qubit: number of logical qubits
+     */
     DDRSchedule(int num_qubit):num_qubit(num_qubit){
         schedule.insert(schedule.begin(),num_qubit,std::vector<DDROperation>());
         qubit_depth.insert(qubit_depth.begin(),num_qubit,0);
         qubit_depth_2g.insert(qubit_depth_2g.begin(),num_qubit,0);
     }
 
+    /**
+     * Insert a single-qubit quantum gate in the circuit
+     * @param name: gate name
+     * @param qubit: quantum gate operand
+     * @param gargs: gate additional arguments
+     * @param cargs: classical arguments
+     * @param gate_depth: gate duration (default: 1)
+     * @param gate_id: gate numerical id (optional)
+     */
     void add_operation_1(std::string &name, int qubit, std::vector<double> &gargs, std::vector<int> &cargs, int gate_depth = 1, int gate_id = -1){
         if(qubit<0 || qubit>=num_qubit) return;
         DDROperation op = DDROperation(name,qubit,gargs,false,gate_depth,gate_id,cargs);
@@ -59,6 +78,16 @@ struct DDRSchedule{
         }
     }
 
+    /**
+     * Insert a two-qubit quantum gate in the circuit
+     * @param name: gate name
+     * @param qubit1: quantum gate first operand
+     * @param qubit2: quantum gate second operand
+     * @param gargs: gate additional arguments
+     * @param cargs: classical arguments
+     * @param gate_depth: gate duration (default: 1)
+     * @param gate_id: gate numerical id (optional)
+     */
     void add_operation_2(std::string &name, int qubit1, int qubit2, std::vector<double> &gargs, std::vector<int> &cargs,  int gate_depth = 1, int gate_id = -1){
         if(qubit1<0 || qubit1>=num_qubit) return;
         if(qubit2<0 || qubit2>=num_qubit) return;
@@ -114,14 +143,23 @@ struct DDRSchedule{
         schedule[line].pop_back();
     }
 
+    /**
+     * Quantum circuit depth
+     */
     int depth(){
         return *std::max_element(qubit_depth.begin(),qubit_depth.end());
     }
 
+    /**
+     * Quantum circuit two-qubit-gates depth
+     */
     int depth_2g(){
         return *std::max_element(qubit_depth_2g.begin(),qubit_depth_2g.end());
     }
-
+    
+    /**
+     * Quantum circuit gate count
+     */
     int gate_count(std::string &name){
         if(op_count.find(name)!=op_count.end()){
             return op_count[name];
@@ -131,6 +169,9 @@ struct DDRSchedule{
 
 };
 
+/**
+ * Schedule Reader, used to iterate over the operations of a DDRSchedule object
+ */
 struct DDRScheduleReader{
 
     DDRSchedule& s;
@@ -140,11 +181,19 @@ struct DDRScheduleReader{
     int last_read_y;
     bool valid_coord;
 
+    /**
+     * DDRScheduleReader constructor
+     * @param s: DDRSchedule to read
+     */
     DDRScheduleReader(DDRSchedule &s):s(s){
         pcs.insert(pcs.begin(),s.num_qubit,0);
         valid_coord = false;
     }
 
+    /**
+     * Iterate over the next gate in the quantum circuit
+     * @return True if the current gate is valid, False if the end of the circuit has been reached
+     */
     bool next(){
         for(int i=0; i<s.num_qubit; i++){
             while(pcs[i] < (int)s.schedule[i].size() && !s.schedule[i][pcs[i]].name.compare("DOUBLE_swap"))
@@ -177,11 +226,17 @@ struct DDRScheduleReader{
         return false;
     }
 
+    /**
+     * Current gate name
+     */
     std::string name(){
         if(!valid_coord) next();
         return s.schedule[last_read_x][last_read_y].name;
     }
 
+    /**
+     * Current gate quantum operands
+     */
     std::vector<int> operands(){
         if(!valid_coord) next();
         std::vector<int> res;
@@ -199,28 +254,48 @@ struct DDRScheduleReader{
         return res;
     }
 
+    /**
+     * Current gate additional arguments
+     */
     std::vector<double> gate_args(){
         if(!valid_coord) next();
         return s.schedule[last_read_x][last_read_y].gargs;
     }
 
+    /**
+     * Current gate classical arguments
+     */
     std::vector<int> cargs(){
         if(!valid_coord) next();
         return s.schedule[last_read_x][last_read_y].cargs;
     }
 
+    /**
+     * Current gate id
+     */
     int gate_id(){
         return s.schedule[last_read_x][last_read_y].gate_id;
     }
 
+    /**
+     * Quantum circuit depth
+     */
     int depth(){
         return s.depth();
     }
 
+    /**
+     * Qubit depth
+     * @param q: qubit
+     */
     int qubit_depth(int q){
         return s.qubit_depth[q];
     }
 
+    /**
+     * Quantum circuit gate count
+     * @param name: name of the quantum gate to count
+     */
     int gate_count(std::string &name){
         return s.gate_count(name);
     }

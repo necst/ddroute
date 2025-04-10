@@ -14,6 +14,9 @@
 #include "schedule.hpp"
 #include "topology.hpp"
 
+/**
+ * DDRouter instance
+ */
 struct DDRouter{
 
     int num_lq;
@@ -23,12 +26,18 @@ struct DDRouter{
     DDRTopology& t;
     DDRSchedule pc;
 
+    // Logical-to-physical map
     std::vector<int> ltp_map;
     std::vector<int> ptl_map;
 
     int two_qubit_gate_depth;
     int swap_depth;
 
+    /**
+     * DDRouter constructor
+     * @param c: DDRSchedule of the logical circuit
+     * @param t: DDRTopology of the targeted quantum processor
+     */
     DDRouter(DDRSchedule& c, DDRTopology& t):c(c),t(t),pc(t.num_nodes){
         num_lq = c.num_qubit;
         num_pq = t.num_nodes;
@@ -37,10 +46,18 @@ struct DDRouter{
         swap_depth = 3;
     }
 
+    /**
+     * Set SWAP gate duration
+     * @param value: SWAP duration
+     */
     void set_swap_depth(int value){
         swap_depth = value;
     }
 
+    /**
+     * Set initial layout
+     * @param ltp: logical to physical map (i.e. ltp[0] is the physical qubit where the logical qubit 0 is mapped)
+     */
     void set_initial_mapping(std::vector<int> &ltp){
         for(int i=0; i<num_lq; i++){
             ltp_map[i] = ltp[i];
@@ -53,6 +70,9 @@ struct DDRouter{
         }
     }
 
+    /**
+     * Compute the front layer of the DAG considering two-qubit gates only
+     */
     void compute_front_layer_2g(std::vector<int> &pcs, std::vector<int> &fl_pcs, std::vector<bool> &front_layer){
         for(int i=0; i<num_lq; i++){
             fl_pcs[i] = pcs[i];
@@ -71,6 +91,9 @@ struct DDRouter{
         }
     }
 
+    /**
+     * Set initial layout using DDPlace
+     */
     std::vector<int> depth_driven_place(){
         std::vector<bool> front_layer;
         std::vector<int> pcs;
@@ -150,10 +173,16 @@ struct DDRouter{
         return result;
     }
 
+    /**
+     * Heuristic for selecting gates to compute the lookahead score
+     */
     int gate_scheduling_score(int q, int pc){
         return c.schedule[q][pc].depth_2g;
     }
 
+    /**
+     * Select the gates used to compute the lookahead score
+     */
     void prepare_front_layer_pref(std::vector<int> &fl_pcs_c, std::vector<bool> &front_layer_c, front_layer_prefs &flp, std::vector<int> &ltp_map){
         int done = 0;
         flp.size = 0;
@@ -201,17 +230,24 @@ struct DDRouter{
         }
     }
 
+    /**
+     * Generalized distance function
+     */
     inline double path_score(int depth, int nswap, double la_score){
         return depth + nswap*(SCORE_SWAP(swap_depth)) + la_score*(SCORE_LA(swap_depth));
     }
 
+    /**
+     * Compute the optimal path between source and dest, using the generalized distance function as distance metric
+     * Return the optimal path as an array of predecessors
+     */
     void schedule_dijkstra(int source, int dest, front_layer_prefs &flp, std::vector<int> &path){
         MyTripleHeap heap = MyTripleHeap(num_pq);
 
         std::vector<bool> visited;
         visited.insert(visited.begin(),num_pq,false);
 
-        //INITIALIZE HEAP
+        // Initialize heap
         for(int i=0; i<num_pq; i++){
             if(i==source){
                 path[i] = i;
@@ -260,7 +296,7 @@ struct DDRouter{
                 int curr_std_dist = min_dist + 1;
                 double curr_la = min_la;
 
-                //COMPUTE NEW LA SCORE
+                // Compute new lookahead score
                 for(int i=0; i< flp.size; i++){
                     if((flp.op_1[i] == adj)  && flp.op_2[i] != source){
                         if(t.get_distance(min_q,flp.op_2[i])         < t.get_distance(adj,flp.op_2[i])){
@@ -299,6 +335,10 @@ struct DDRouter{
 
     }
 
+    /**
+     * Insert a SWAP between physical qubits in the physical circuit,
+     * modify the logical-to-physical and physical-to-logical mappings accordingly
+     */
     void perform_SWAP(int q1, int q2, std::vector<int> &pcs){
 
         std::string newname = std::string("swap");
@@ -357,12 +397,12 @@ struct DDRouter{
             }
         }
 
-        //INSERT SWAP OPERATION
+        // Insert SWAP operation
         std::vector<double> g_args = std::vector<double>();
         std::vector<int> c_args = std::vector<int>();
         pc.add_operation_2(newname,MIN(q1,q2),MAX(q1,q2),g_args,c_args,depth_to_insert);
 
-        //UPDATE MAPS
+        // Update maps
         int l1 = ptl_map[q1];
         int l2 = ptl_map[q2];
         ptl_map[q1] = l2;
@@ -371,12 +411,25 @@ struct DDRouter{
         if(l2>=0) ltp_map[l2] = q1;
     }
 
+    /**
+     * Run DDRoute on the logical quantum circuit
+     * @return A DDRScheduleReader instance of the routed quantum circuit
+     */
     DDRScheduleReader depth_driven_routing(){
 
+        // Front layer: array of bools, with positive entries corresponding to qubits in the front layer of the DAG
         std::vector<bool> front_layer;
+
+        // Pointers to the current logical operation to be inserted in the physical circuit
         std::vector<int> pcs;
+
+        // Pointers to the logical operation for qubits in the front layer
         std::vector<int> fl_pcs;
 
+        // Structure containing the gates used for computing the lookahead score
+        front_layer_prefs flp;
+
+        // Front layer and pointer set used for computing the lookahead score
         std::vector<bool> front_layer_c;
         std::vector<int> fl_pcs_c;
 
@@ -386,11 +439,13 @@ struct DDRouter{
         front_layer_c.insert(front_layer_c.begin(),num_lq,false);
         fl_pcs_c.insert(fl_pcs_c.begin(),num_lq,0);
 
+        // For optimization purposes, optimal paths are cached and reused when possible
         std::vector<int> valid_cached_path = std::vector<int>(num_lq);
         std::vector<int> nonce_value = std::vector<int>(num_lq);
         std::vector<int> excluded = std::vector<int>(num_pq);
         std::vector<std::vector<int>> included_in_path = std::vector<std::vector<int>>();
         std::vector<std::vector<int>> sd_p = std::vector<std::vector<int>>();
+        int global_nonce = 1;
 
         for(int i=0; i<num_lq; i++){
             valid_cached_path[i] = 0;
@@ -406,33 +461,31 @@ struct DDRouter{
             excluded[i] = 0;
         }
 
-        front_layer_prefs flp;
-
-        int global_nonce = 1;
-
+        // Compute front layer
         compute_front_layer_2g(pcs,fl_pcs,front_layer);
 
+        // Iterate until the front layer is empty
         while(!is_empty_fl(front_layer)){
 
             int executed = 0;
 
-            //EXECUTE GATES WITH ADJACENT QUBITS
+            // Check if there are two-qubit gates that can be executed
             for(int q=0; q<num_lq; q++){
                 if(front_layer[q]){
                     int oth_q = c.schedule[q][fl_pcs[q]].oth;
                     if(oth_q <= q && t.is_connected(ltp_map[q],ltp_map[oth_q])){
-                        //EXECUTE SINGLE QUBIT GATES
-                        //FIRST QUBIT
+
+                        // Execute single-qubit gates first
                         while(pcs[q] < fl_pcs[q]){
                             pc.add_operation_1(c.schedule[q][pcs[q]].name,ltp_map[q],c.schedule[q][pcs[q]].gargs,c.schedule[q][pcs[q]].cargs,c.schedule[q][pcs[q]].gate_depth,c.schedule[q][pcs[q]].gate_id);
                             pcs[q]++;
                         }
-                        //SECOND QUBIT
                         while(pcs[oth_q] < fl_pcs[oth_q]){
                             pc.add_operation_1(c.schedule[oth_q][pcs[oth_q]].name,ltp_map[oth_q],c.schedule[oth_q][pcs[oth_q]].gargs,c.schedule[oth_q][pcs[oth_q]].cargs,c.schedule[oth_q][pcs[oth_q]].gate_depth,c.schedule[oth_q][pcs[oth_q]].gate_id);
                             pcs[oth_q]++;
                         }
-                        //COMMON GATE
+
+                        // Execute two-qubit gate
                         if(c.schedule[q][fl_pcs[q]].first_operand == q){
                             pc.add_operation_2(c.schedule[q][fl_pcs[q]].name,ltp_map[q],ltp_map[oth_q],c.schedule[q][fl_pcs[q]].gargs,c.schedule[q][fl_pcs[q]].cargs,c.schedule[q][fl_pcs[q]].gate_depth,c.schedule[q][fl_pcs[q]].gate_id);
                         }else{
@@ -444,16 +497,18 @@ struct DDRouter{
                     }
                 }
             }
-        
-            if(executed > 0){
 
+            // Check if any two-qubit gate has been inserted in the physical circuit
+            if(executed > 0){
+                
+                // Update front layer
                 compute_front_layer_2g(pcs,fl_pcs,front_layer);
-                //INVALIDATE CACHE
+
+                // Invalidate cached paths
                 for(int lq=0; lq<num_lq; lq++)
                     valid_cached_path[lq] = 0;
             }else{
 
-                //SWAP
                 bool swap_found = false;
                 for(int pq=0; pq<num_pq; pq++)
                     excluded[pq] = 0;
@@ -464,7 +519,7 @@ struct DDRouter{
                     int min_depth = -1;
                     int same_score = 1;
 
-                    //OPERAND SELECTION
+                    // Operand selection
                     for(int i=0; i<num_lq; i++){
                         if(front_layer[i] && !excluded[ltp_map[i]]){
                             int qscore = pc.qubit_depth[t.adjacent[ltp_map[i]][0]];
@@ -482,7 +537,8 @@ struct DDRouter{
                     if(min_depth_qubit>=0)
                         force = 0;
                     while(min_depth_qubit<0){
-                        //FORCE QUBIT SELECTION
+
+                        // Force qubit selection
                         same_score = 1;
                         for(int i=0; i<num_lq; i++){
                             if(front_layer[i] && excluded[i]<=force){
@@ -496,11 +552,12 @@ struct DDRouter{
                     int succ=-1;
                     while(succ<0){
                         if(!valid_cached_path[min_depth_qubit]){
-                            //COMPUTE OPTIMAL PATH
+
+                            // Compute optimal paths
                             prepare_front_layer_pref(fl_pcs_c,front_layer_c,flp,ltp_map);
                             schedule_dijkstra(ltp_map[min_depth_qubit],ltp_map[c.schedule[min_depth_qubit][fl_pcs[min_depth_qubit]].oth],flp,sd_p[min_depth_qubit]);
                             
-                            //SETUP CACHE
+                            // Setup cache
                             nonce_value[min_depth_qubit] = global_nonce;
                             global_nonce++;
 
@@ -513,7 +570,8 @@ struct DDRouter{
                             }
                             included_in_path[min_depth_qubit][ltp_map[min_depth_qubit]] = nonce_value[min_depth_qubit];
                         }
-
+                        
+                        // Select SWAP
                         succ = ltp_map[c.schedule[min_depth_qubit][fl_pcs[min_depth_qubit]].oth];
                         while(succ>=0 && sd_p[min_depth_qubit][succ]!=ltp_map[min_depth_qubit] && sd_p[min_depth_qubit][succ]!=succ){
                             succ = sd_p[min_depth_qubit][succ];
@@ -524,7 +582,7 @@ struct DDRouter{
                         }
                     }
 
-                    //CHECK FOR VALIDITY OF OPERATION
+                    // Check for validity of selected SWAP operation
                     if(((
                         (   
                             pc.schedule[ltp_map[min_depth_qubit]].size() == 0 ||
@@ -555,7 +613,8 @@ struct DDRouter{
                          || force
                         ) && (ltp_map[min_depth_qubit]!=succ)
                     ){
-                        //INVALIDATE PATHS IN CACHE
+
+                        // Store path in cache
                         if(ptl_map[succ]>=0)
                             valid_cached_path[ptl_map[succ]] = 0;
                         for(int i=0; i<num_lq; i++){
@@ -569,7 +628,7 @@ struct DDRouter{
                         }
                         included_in_path[min_depth_qubit][ltp_map[min_depth_qubit]] = 0;
 
-                        //PERFORM SWAP OPERATION
+                        // Perform SWAP operation
                         perform_SWAP(ltp_map[min_depth_qubit],succ,pcs);
                         swap_found = true;
                         valid_cached_path[min_depth_qubit] = 1;
@@ -580,6 +639,7 @@ struct DDRouter{
             }
         }
 
+        // Inserted missing single-qubit gates at the end of the circuit
         for(int q=0; q<num_lq; q++){
             while(pcs[q] < (int)c.schedule[q].size()){
                 pc.add_operation_1(c.schedule[q][pcs[q]].name,ltp_map[q],c.schedule[q][pcs[q]].gargs,c.schedule[q][pcs[q]].cargs,c.schedule[q][pcs[q]].gate_depth,c.schedule[q][pcs[q]].gate_id);
@@ -587,6 +647,7 @@ struct DDRouter{
             }
         }
 
+        // Return a DDRScheduleReader of the physical circuit
         return DDRScheduleReader(pc);
 
     }
