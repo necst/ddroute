@@ -160,6 +160,12 @@ PYBIND11_MODULE(ddroute_cpp, m){
 
             @param value: SWAP duration
         )pbdoc")
+        .def("set_initial_layout", &DDRouter::set_initial_layout, 
+        R"pbdoc(
+            Set initial layout
+
+            @param ltp: logical to physical map (i.e. ltp[0] is the physical qubit where the logical qubit 0 is mapped)
+        )pbdoc")
         .def("depth_driven_place", &DDRouter::depth_driven_place, 
         R"pbdoc(
             Set initial layout using DDPlace

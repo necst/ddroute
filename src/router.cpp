@@ -70,7 +70,7 @@ struct DDRouter{
      * Set initial layout
      * @param ltp: logical to physical map (i.e. ltp[0] is the physical qubit where the logical qubit 0 is mapped)
      */
-    void set_initial_mapping(std::vector<int> &ltp){
+    void set_initial_layout(std::vector<int> &ltp){
         for(int i=0; i<num_lq; i++){
             if(ltp[i] < 0 || ltp[i] >= t.num_nodes){
                 throw py::value_error("Invalid logical-to-physical mapping: found value " + std::to_string(ltp[i]) + ", required 0 <= pi(q) < " + std::to_string(t.num_nodes));

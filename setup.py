@@ -19,4 +19,12 @@ setup(
     python_requires='>=3.9',
     ext_modules=ext_modules,
     zip_safe=False,
+    entry_points={
+        'qiskit.transpiler.routing': [
+            'ddroute = ddroute:DDRoutePassManager',
+        ],
+        'qiskit.transpiler.layout': [
+            'ddplace = ddroute:DDPlacePassManager',
+        ]
+    }
 )
