@@ -2,11 +2,6 @@
 
 These folders contain the scripts and results of the paper  **DDRoute: a Novel Depth-Driven Approach to the Qubit Routing Problem**, presented at DAC 2025.
 
-## Circuits
-
-This folder contains the quantum circuits generated with Qiskit to test each routing algorithm on the IBM Condor topology.
-
-
 ## Results
 
 This folder contains all the results, in the following format:
@@ -17,7 +12,7 @@ ALGORITHM, benchmark, circuit file, topology file, logical qubits, initial depth
 
 ## Scripts
 
-This folder contains the python scripts used to generate the results in the *results* folder, and the circuits in the *circuits* folder.
+This folder contains the python scripts used to generate the results in the *results* folder, and the circuits based on Qiskit's circuit library used for the scalability test.
 
 ## Topologies
 
@@ -25,7 +20,7 @@ This folder contains the coupling maps of the quantum processors employed.
 
 # Implementation Notes
 
-## Circuits Preprocessing
+## Circuits Preprocessing and Generation
 
 To ensure consistency across different benchmarks, all the circuits have been transpiled with this Qiskit command before testing the routing algorithms:
 ```python
@@ -37,6 +32,8 @@ transpiled_circuit = transpile(circuit, basis_gates=gate_set, optimization_level
 # ...
 ```
 Operations such as *reset* and *measure* have been removed.
+
+The circuits generated using Qiskit's circuit library have been built with the *generate_lib_dataset.py* script.
 
 ## Bash Command
 
